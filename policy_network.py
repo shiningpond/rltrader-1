@@ -5,14 +5,14 @@ from keras.optimizers import sgd
 
 
 class PolicyNetwork:
-    def __init__(self, input_dim=0, output_dim=0, lr=0.01):
+    def __init__(self, input_dim=0, output_dim=0, n_steps=1, lr=0.01):
         self.input_dim = input_dim
         self.lr = lr
 
         # LSTM 신경망
         self.model = Sequential() 
 
-        self.model.add(LSTM(256, input_shape=(1, input_dim),
+        self.model.add(LSTM(256, input_shape=(n_steps, input_dim),
                             return_sequences=True, stateful=False, dropout=0.5))
         self.model.add(BatchNormalization())
         self.model.add(LSTM(256, return_sequences=True, stateful=False, dropout=0.5))
