@@ -13,8 +13,7 @@ def preprocess(chart_data):
     windows = [5, 10, 20, 60, 120]
     for window in windows:
         prep_data['close_ma{}'.format(window)] = prep_data['close'].rolling(window).mean()
-        prep_data['volume_ma{}'.format(window)] = (
-            prep_data['volume'].rolling(window).mean())
+        prep_data['volume_ma{}'.format(window)] = prep_data['volume'].rolling(window).mean()
     return prep_data
 
 

@@ -13,7 +13,7 @@ class Agent:
     ACTION_BUY = 0  # 매수
     ACTION_SELL = 1  # 매도
     ACTION_HOLD = 2  # 홀딩
-    ACTIONS = [ACTION_BUY, ACTION_SELL]  # 인공 신경망에서 확률을 구할 행동들
+    ACTIONS = [ACTION_BUY, ACTION_SELL, ACTION_HOLD]  # 인공 신경망에서 확률을 구할 행동들
     NUM_ACTIONS = len(ACTIONS)  # 인공 신경망에서 고려할 출력값의 개수
 
     def __init__(
@@ -76,7 +76,18 @@ class Agent:
             exploration = False
             probs = policy_network.predict(sample)  # 각 행동에 대한 확률
             action = np.argmax(probs)
+
+            # 홀딩인 경우 보유 주식 수에 따라서 선호 행동 수정
+            if action == Agent.ACTION_HOLD:
+                if self.num_hold == 0:
+                    if probs[Agent.ACTION_BUY] > probs[Agent.ACTION_SELL]:
+                        action = Agent.ACTION_BUY
+                else:
+                    if probs[Agent.ACTION_SELL] > probs[Agent.ACTION_BUY]:
+                        action = Agent.ACTION_SELL
+
             confidence = probs[action]
+
         return action, confidence, exploration
 
     def validate_action(self, action):
@@ -156,11 +167,11 @@ class Agent:
 
         # 지연 보상 판단
         if profitloss > self.delayed_reward_threshold:
-            delayed_reward = 1
+            delayed_reward = profitloss
             # 목표 수익률 달성하여 기준 포트폴리오 가치 갱신
             self.base_portfolio_value = self.portfolio_value
         elif profitloss < -self.delayed_reward_threshold:
-            delayed_reward = -1
+            delayed_reward = profitloss
             # 손실 기준치를 초과하여 기준 포트폴리오 가치 갱신
             self.base_portfolio_value = self.portfolio_value
         else:
