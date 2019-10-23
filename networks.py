@@ -1,27 +1,43 @@
+import threading
 import numpy as np
+import tensorflow as tf
+from tensorflow.keras.backend import set_session
 from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.layers import Input, Activation, LSTM, Dense, BatchNormalization, Dropout, Flatten
 from tensorflow.keras.optimizers import SGD
 
 
+lock = threading.Lock()
+
+
 class Network:
-    def __init__(self, input_dim=0, output_dim=0, n_steps=1, lr=0.01, shared_net=None, activation='tanh'):
+    def __init__(self, input_dim=0, output_dim=0, n_steps=1, lr=0.01, shared_net=None, activation='tanh', sess=None, graph=None):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.lr = lr
         self.model = None
         self.shared_net = shared_net
         self.activation = activation
+        self.sess = sess if sess is not None else tf.Session()
+        self.graph = graph if graph is not None else tf.get_default_graph()
 
     def reset(self):
         self.prob = None
 
     def predict(self, sample):
-        self.prob = self.model.predict(np.array(sample).reshape((1, -1, self.input_dim))).flatten()
+        with lock:
+            with self.graph.as_default():
+                set_session(self.sess)
+                self.prob = self.model.predict(np.array(sample).reshape((1, -1, self.input_dim))).flatten()
         return self.prob
 
     def train_on_batch(self, x, y):
-        return self.model.train_on_batch(x, y)
+        loss = 0.
+        with lock:
+            with self.graph.as_default():
+                set_session(self.sess)
+                loss = self.model.train_on_batch(x, y)
+        return loss
 
     def save_model(self, model_path):
         if model_path is not None and self.model is not None:
@@ -33,13 +49,15 @@ class Network:
 
 
 class LSTMNetwork(Network):
-    def __init__(self, input_dim=0, output_dim=0, n_steps=1, lr=0.01, shared_net=None, activation='tanh'):
+    def __init__(self, input_dim=0, output_dim=0, n_steps=1, lr=0.01, shared_net=None, activation='tanh', sess=None, graph=None):
         super().__init__(
             input_dim=input_dim, 
             output_dim=output_dim, 
             lr=lr,
             shared_net=shared_net,
             activation=activation,
+            sess=sess,
+            graph=graph,
         )
         self.n_steps = n_steps
         inp = Input((self.n_steps, self.input_dim))
@@ -57,12 +75,15 @@ class LSTMNetwork(Network):
 
 
 class DNNNetwork(Network):
-    def __init__(self, input_dim=0, output_dim=0, lr=0.01, shared_net=None):
+    def __init__(self, input_dim=0, output_dim=0, lr=0.01, shared_net=None, activation='tanh', sess=None, graph=None):
         super().__init__(
             input_dim=input_dim, 
             output_dim=output_dim, 
             lr=lr,
             shared_net=shared_net,
+            activation=activation,
+            sess=sess,
+            graph=graph,
         )
         self.model = Sequential()
         inp = Input((1, input_dim))
@@ -77,7 +98,7 @@ class DNNNetwork(Network):
         output = BatchNormalization()(output)
         output = Dense(output_dim)(output)
         output = Flatten()(output)
-        output = Activation('tanh')(output)
+        output = Activation(activation)(output)
         self.model.compile(optimizer=SGD(lr=lr), loss='mse')
     
 

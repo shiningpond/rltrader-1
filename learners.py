@@ -6,6 +6,8 @@ import collections
 import threading
 import time
 import numpy as np
+import tensorflow as tf
+from tensorflow.keras.backend import set_session
 import settings
 from environment import Environment
 from agent import Agent
@@ -14,6 +16,8 @@ from networks import LSTMNetwork
 from visualizer import Visualizer
 
 locale.setlocale(locale.LC_ALL, 'ko_KR.UTF-8')
+
+lock = threading.Lock()
 
 
 class PolicyLearner:
@@ -208,21 +212,22 @@ class PolicyLearner:
             # 에포크 관련 정보 가시화
             num_epoches_digit = len(str(num_epoches))
             epoch_str = str(epoch + 1).rjust(num_epoches_digit, '0')
-            self.visualize(epoch_str, num_epoches, epsilon, memory_action, memory_num_stocks, 
-                        memory_policy, memory_exp_idx, memory_learning_idx, memory_pv, epoch_summary_dir)
+            with lock:
+                self.visualize(epoch_str, num_epoches, epsilon, memory_action, memory_num_stocks, 
+                            memory_policy, memory_exp_idx, memory_learning_idx, memory_pv, epoch_summary_dir)
 
-            # 에포크 관련 정보 로그 기록
-            if pos_learning_cnt + neg_learning_cnt > 0:
-                loss /= pos_learning_cnt + neg_learning_cnt
-            logging.info("[Epoch %s/%s]\tEpsilon:%.4f\t#Expl.:%d/%d\t"
-                        "#Buy:%d\t#Sell:%d\t#Hold:%d\t"
-                        "#Stocks:%d\tPV:%s\t"
-                        "POS:%s\tNEG:%s\tLoss:%10.6f" % (
-                            epoch_str, num_epoches, epsilon, exploration_cnt, itr_cnt,
-                            self.agent.num_buy, self.agent.num_sell, self.agent.num_hold,
-                            self.agent.num_stocks,
-                            locale.currency(self.agent.portfolio_value, grouping=True),
-                            pos_learning_cnt, neg_learning_cnt, loss))
+                # 에포크 관련 정보 로그 기록
+                if pos_learning_cnt + neg_learning_cnt > 0:
+                    loss /= pos_learning_cnt + neg_learning_cnt
+                logging.info("[%s][Epoch %s/%s]\tEpsilon:%.4f\t#Expl.:%d/%d\t"
+                            "#Buy:%d\t#Sell:%d\t#Hold:%d\t"
+                            "#Stocks:%d\tPV:%s\t"
+                            "POS:%s\tNEG:%s\tLoss:%10.6f" % (
+                                self.stock_code, epoch_str, num_epoches, epsilon, exploration_cnt, itr_cnt,
+                                self.agent.num_buy, self.agent.num_sell, self.agent.num_hold,
+                                self.agent.num_stocks,
+                                locale.currency(self.agent.portfolio_value, grouping=True),
+                                pos_learning_cnt, neg_learning_cnt, loss))
 
             # 학습 관련 정보 갱신
             max_portfolio_value = max(
@@ -362,15 +367,19 @@ class A3CLearner:
                  net='lstm', n_steps=1, value_network_path=None, shared_network=None):
         if len(list_training_data) == 0: return
         self.num_features = list_training_data[0].shape[1] + Agent.STATE_DIM
-        if shared_network is None:
-            self.shared_network = networks.get_shared_network(net=net, n_steps=n_steps, input_dim=self.num_features)
-        else:
-            self.shared_network = shared_network
+        self.sess = tf.Session()
+        self.graph = tf.get_default_graph()
+        with self.graph.as_default():
+            set_session(self.sess)
+            if shared_network is None:
+                self.shared_network = networks.get_shared_network(net=net, n_steps=n_steps, input_dim=self.num_features)
+            else:
+                self.shared_network = shared_network
         if net == 'dnn':
             pass
         elif net == 'lstm':
-            self.policy_network = LSTMNetwork(input_dim=self.num_features, output_dim=Agent.NUM_ACTIONS, lr=lr, shared_net=self.shared_network)
-            self.value_network = LSTMNetwork(input_dim=self.num_features, output_dim=1, lr=lr, shared_net=self.shared_network, activation='linear')
+            self.policy_network = LSTMNetwork(input_dim=self.num_features, output_dim=Agent.NUM_ACTIONS, lr=lr, shared_net=self.shared_network, sess=self.sess, graph=self.graph)
+            self.value_network = LSTMNetwork(input_dim=self.num_features, output_dim=1, lr=lr, shared_net=self.shared_network, activation='linear', sess=self.sess, graph=self.graph)
         # 모델 로드
         self.policy_network_path = policy_network_path
         self.value_network_path = value_network_path
