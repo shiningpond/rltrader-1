@@ -17,8 +17,6 @@ from visualizer import Visualizer
 
 locale.setlocale(locale.LC_ALL, 'ko_KR.UTF-8')
 
-lock = threading.Lock()
-
 
 class PolicyLearner:
     def __init__(self, stock_code, chart_data, training_data=None,
@@ -82,9 +80,10 @@ class PolicyLearner:
     def fit(
         self, num_epoches=100, max_memory=60, balance=10000000,
         discount_factor=0, start_epsilon=.5, learning=True):
-        logging.info("LR: {lr}, DF: {discount_factor}, "
+        logging.info("[{code}] LR: {lr}, DF: {discount_factor}, "
                     "TU: [{min_trading_unit}, {max_trading_unit}], "
                     "DRT: {delayed_reward_threshold}".format(
+            code=self.stock_code,
             lr=self.policy_network.lr,
             discount_factor=discount_factor,
             min_trading_unit=self.agent.min_trading_unit,
@@ -212,22 +211,21 @@ class PolicyLearner:
             # 에포크 관련 정보 가시화
             num_epoches_digit = len(str(num_epoches))
             epoch_str = str(epoch + 1).rjust(num_epoches_digit, '0')
-            with lock:
-                self.visualize(epoch_str, num_epoches, epsilon, memory_action, memory_num_stocks, 
-                            memory_policy, memory_exp_idx, memory_learning_idx, memory_pv, epoch_summary_dir)
+            self.visualize(epoch_str, num_epoches, epsilon, memory_action, memory_num_stocks, 
+                        memory_policy, memory_exp_idx, memory_learning_idx, memory_pv, epoch_summary_dir)
 
-                # 에포크 관련 정보 로그 기록
-                if pos_learning_cnt + neg_learning_cnt > 0:
-                    loss /= pos_learning_cnt + neg_learning_cnt
-                logging.info("[%s][Epoch %s/%s]\tEpsilon:%.4f\t#Expl.:%d/%d\t"
-                            "#Buy:%d\t#Sell:%d\t#Hold:%d\t"
-                            "#Stocks:%d\tPV:%s\t"
-                            "POS:%s\tNEG:%s\tLoss:%10.6f" % (
-                                self.stock_code, epoch_str, num_epoches, epsilon, exploration_cnt, itr_cnt,
-                                self.agent.num_buy, self.agent.num_sell, self.agent.num_hold,
-                                self.agent.num_stocks,
-                                locale.currency(self.agent.portfolio_value, grouping=True),
-                                pos_learning_cnt, neg_learning_cnt, loss))
+            # 에포크 관련 정보 로그 기록
+            if pos_learning_cnt + neg_learning_cnt > 0:
+                loss /= pos_learning_cnt + neg_learning_cnt
+            logging.info("[%s][Epoch %s/%s]\tEpsilon:%.4f\t#Expl.:%d/%d\t"
+                        "#Buy:%d\t#Sell:%d\t#Hold:%d\t"
+                        "#Stocks:%d\tPV:%s\t"
+                        "POS:%s\tNEG:%s\tLoss:%10.6f" % (
+                            self.stock_code, epoch_str, num_epoches, epsilon, exploration_cnt, itr_cnt,
+                            self.agent.num_buy, self.agent.num_sell, self.agent.num_hold,
+                            self.agent.num_stocks,
+                            locale.currency(self.agent.portfolio_value, grouping=True),
+                            pos_learning_cnt, neg_learning_cnt, loss))
 
             # 학습 관련 정보 갱신
             max_portfolio_value = max(
@@ -236,8 +234,8 @@ class PolicyLearner:
                 epoch_win_cnt += 1
 
         # 학습 관련 정보 로그 기록
-        logging.info("Max PV: %s, \t # Win: %d" % (
-            locale.currency(max_portfolio_value, grouping=True), epoch_win_cnt))
+        logging.info("[{code}] Max PV: {max_pv}, \t # Win: {cnt_win}".format(
+            code=self.stock_code, max_pv=locale.currency(max_portfolio_value, grouping=True), cnt_win=epoch_win_cnt))
 
     def get_batch(self, memory, batch_size, discount_factor, delayed_reward):
         x = np.zeros((batch_size, self.n_steps, self.num_features))
